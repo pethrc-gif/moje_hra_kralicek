@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Králíček: Modulární verze</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; font-family: 'Segoe UI', sans-serif; touch-action: manipulation; }
+        canvas { display: block; transition: background 1s ease; }
+        #ui { position: absolute; top: 20px; left: 20px; font-size: 28px; font-weight: bold; text-shadow: 1px 1px 0 white; z-index: 10; }
+        #level-info { position: absolute; top: 55px; left: 20px; font-size: 18px; color: #fff; background: rgba(0,0,0,0.4); padding: 4px 12px; border-radius: 8px; z-index: 10; }
+    </style>
+</head>
+<body>
+    <div id="ui">Skóre: 0</div>
+    <div id="level-info">Level: 1 (Den)</div>
+    <canvas id="gameCanvas"></canvas>
+
+    <script src="bunny2.js"></script>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const scoreElement = document.getElementById('ui');
+        const levelElement = document.getElementById('level-info');
+
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        const groundY = canvas.height * 0.85;
+        let score = 0;
+        let gameActive = true;
+        let gameSpeed = 3.5;
+        let currentLevel = 1;
+        const keys = { left: false, right: false };
+
+        // Vytvoření instance králíka z externího souboru
+        const bunny = new Bunny(groundY);
+
+        const platforms = [];
+        const carrots = [];
+        let spawnTimer = 0;
+
+        function updateLevel() {
+            let oldLevel = currentLevel;
+            if (score < 25) currentLevel = 1;
+            else if (score < 50) currentLevel = 2;
+            else if (score < 100) currentLevel = 3;
+            else currentLevel = 4;
+
+            if (oldLevel !== currentLevel) {
+                const names = ["", "Den", "Západ Slunce", "Soumrak", "Noc"];
+                levelElement.innerText = `Level: ${currentLevel} (${names[currentLevel]})`;
+                gameSpeed = 3.5 + (currentLevel - 1) * 2.5;
+            }
+        }
+
+        function getColors() {
+            const themes = {
+                1: { sky: '#a2d2ff', ground: '#74c69d', plat: '#8d99ae', text: '#2b2d42' },
+                2: { sky: '#fb8500', ground: '#52b788', plat: '#457b9d', text: '#fff' },
+                3: { sky: '#023047', ground: '#2d6a4f', plat: '#1d3557', text: '#fff' },
+                4: { sky: '#03071e', ground: '#1a4331', plat: '#370617', text: '#fff' }
+            };
+            return themes[currentLevel];
+        }
+
+        function spawnPlatform() {
+            if (spawnTimer <= 0) {
+                const pWidth = 120 + Math.random() * 200;
+                const pY = groundY - (40 + Math.random() * 180);
+                platforms.push({ x: canvas.width, y: pY, width: pWidth, height: 25 });
+                if (Math.random() < 0.6) {
+                    carrots.push({ x: canvas.width + pWidth / 2 - 10, y: pY - 30, width: 20, height: 25, collected: false });
+                }
+                spawnTimer = 60 + Math.random() * 40;
+            }
+            spawnTimer--;
+        }
+
+        function update() {
+            if (!gameActive) return;
+            updateLevel();
+
+            // Pohyb králíka
+            if (keys.left) bunny.vx = -bunny.speed;
+            else if (keys.right) bunny.vx = bunny.speed;
+            else bunny.vx = 0;
+
+            bunny.x += bunny.vx;
+            bunny.vy += bunny.gravity;
+            bunny.y += bunny.vy;
+
+            if (bunny.x < 0) bunny.x = 0;
+            if (bunny.x > canvas.width - bunny.width) bunny.x = canvas.width - bunny.width;
+
+            let onAnyPlatform = false;
+            if (bunny.y > groundY - bunny.height) {
+                bunny.y = groundY - bunny.height;
+                bunny.vy = 0;
+                bunny.isGrounded = true;
+                bunny.canDoubleJump = false;
+                onAnyPlatform = true;
+            }
+
+            spawnPlatform();
+
+            platforms.forEach((p, i) => {
+                p.x -= gameSpeed;
+                const bBottom = bunny.y + bunny.height;
+                const bRight = bunny.x + bunny.width - 5;
+                const bLeft = bunny.x + 5;
+
+                if (bRight > p.x && bLeft < p.x + p.width) {
+                    if (bunny.vy > 0 && bBottom >= p.y && bBottom <= p.y + 25) {
+                        bunny.y = p.y - bunny.height;
+                        bunny.vy = 0;
+                        bunny.isGrounded = true;
+                        bunny.canDoubleJump = false;
+                        onAnyPlatform = true;
+                    } else if (bBottom > p.y + 5 && bunny.y < p.y + 20 && bRight > p.x && bLeft < p.x + 10) {
+                        gameActive = false;
+                    }
+                }
+                if (p.x + p.width < 0) { platforms.splice(i, 1); score++; scoreElement.innerText = `Skóre: ${score}`; }
+            });
+
+            carrots.forEach((c, i) => {
+                c.x -= gameSpeed;
+                if (!c.collected && bunny.x < c.x + 20 && bunny.x + bunny.width > c.x && bunny.y < c.y + 25 && bunny.y + bunny.height > c.y) {
+                    c.collected = true; score += 5; scoreElement.innerText = `Skóre: ${score}`;
+                }
+                if (c.x + 20 < 0 || c.collected) carrots.splice(i, 1);
+            });
+
+            if (!onAnyPlatform && bunny.y < groundY - bunny.height) bunny.isGrounded = false;
+        }
+
+        function draw() {
+            const col = getColors();
+            ctx.fillStyle = col.sky; ctx.fillRect(0, 0, canvas.width, canvas.height);
+            if (currentLevel === 4) {
+                ctx.fillStyle = "#fff";
+                for(let i=0; i<20; i++) ctx.fillRect((i*137)%canvas.width, (i*251)%groundY, 2, 2);
+            }
+            ctx.fillStyle = col.ground; ctx.fillRect(0, groundY, canvas.width, canvas.height - groundY);
+            
+            platforms.forEach(p => {
+                ctx.fillStyle = col.plat; ctx.beginPath(); ctx.roundRect(p.x, p.y, p.width, p.height, 5); ctx.fill();
+            });
+
+            carrots.forEach(c => {
+                ctx.fillStyle = '#fb8500'; ctx.beginPath(); ctx.moveTo(c.x, c.y); ctx.lineTo(c.x+20, c.y); ctx.lineTo(c.x+10, c.y+25); ctx.fill();
+            });
+
+            bunny.draw(ctx);
+            scoreElement.style.color = col.text;
+
+            if (gameActive) requestAnimationFrame(() => { update(); draw(); });
+            else {
+                ctx.fillStyle = 'rgba(0,0,0,0.7)'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.fillStyle = 'white'; ctx.textAlign = 'center'; ctx.font = 'bold 40px sans-serif';
+                ctx.fillText('KONEC HRY!', canvas.width/2, canvas.height/2);
+            }
+        }
+
+        // Ovládání
+        window.addEventListener('keydown', e => {
+            if (e.code === 'ArrowLeft') keys.left = true;
+            if (e.code === 'ArrowRight') keys.right = true;
+            if (e.code === 'Space') { if (!gameActive) location.reload(); else bunny.jump(); }
+        });
+        window.addEventListener('keyup', e => {
+            if (e.code === 'ArrowLeft') keys.left = false;
+            if (e.code === 'ArrowRight') keys.right = false;
+        });
+
+        draw();
+    </script>
+</body>
+</html>
