@@ -16,7 +16,7 @@
     <div id="level-info">Level: 1 (Den)</div>
     <canvas id="gameCanvas"></canvas>
 
-    <script src="bunny2.js"></script>
+    <script src="bunny.js"></script>
 
     <script>
         const canvas = document.getElementById('gameCanvas');
